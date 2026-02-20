@@ -194,6 +194,34 @@ docker compose -f docker-compose.prod.yml exec backend alembic upgrade head
 - **Celery tasks:** Define tasks in `app/tasks/`. Import them in `app/celery_app.py` via the `include` list.
 - **Config:** All configuration comes from environment variables through `app/config.py` (Pydantic Settings). Never hardcode secrets.
 - **Routers:** Add new FastAPI routers in `app/routers/` and register them in `app/main.py`.
+- **Dependencies:** Managed with Poetry (`pyproject.toml`). The prod image skips the `dev` group (`--without dev`).
+
+### Managing Dependencies with Poetry
+
+```bash
+# Add a production dependency
+docker compose exec backend poetry add <package>
+
+# Add a dev-only dependency
+docker compose exec backend poetry add --group dev <package>
+
+# Remove a dependency
+docker compose exec backend poetry remove <package>
+
+# Show installed packages
+docker compose exec backend poetry show
+
+# Update all dependencies (within version constraints)
+docker compose exec backend poetry update
+
+# Regenerate poetry.lock without upgrading
+docker compose exec backend poetry lock --no-update
+```
+
+After any `poetry add` / `poetry remove`, rebuild the image so the lock file changes take effect:
+```bash
+docker compose up --build backend
+```
 
 ## Frontend Development Notes
 
@@ -207,6 +235,7 @@ docker compose -f docker-compose.prod.yml exec backend alembic upgrade head
 | Tech            | Version  |
 |-----------------|----------|
 | Python          | 3.12     |
+| Poetry          | 1.8.x    |
 | FastAPI         | ≥0.109   |
 | SQLAlchemy      | ≥2.0     |
 | Alembic         | ≥1.13    |

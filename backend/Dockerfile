@@ -9,11 +9,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Poetry config — install into the container's global Python (no virtualenv needed)
+ENV POETRY_VERSION=1.8.3 \
+    POETRY_NO_INTERACTION=1 \
+    POETRY_VIRTUALENVS_CREATE=false \
+    POETRY_CACHE_DIR=/tmp/poetry_cache
 
-# Source is mounted at runtime via docker-compose volume
-COPY . .
+RUN pip install --no-cache-dir poetry==$POETRY_VERSION
+
+# Install dependencies first for better layer caching
+# (source code is mounted at runtime, so --no-root skips installing the package itself)
+COPY pyproject.toml poetry.lock* ./
+RUN poetry install --no-root && rm -rf $POETRY_CACHE_DIR
 
 EXPOSE 8000
 
