@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     debug: bool = False
     secret_key: str = "change-me-in-production"
 
+    # JWT
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 30
+
     # Database
     database_url: str = "postgresql+asyncpg://gscc:gscc_password@db:5432/gscc_db"
     database_sync_url: str = "postgresql+psycopg2://gscc:gscc_password@db:5432/gscc_db"
