@@ -1,38 +1,32 @@
-import { useEffect, useState } from "react";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { AuthProvider } from "./contexts/AuthContext";
+import ProtectedRoute from "./components/ProtectedRoute";
+import Login from "./pages/Login";
+import Dashboard from "./pages/Dashboard";
+import AdminPanel from "./pages/AdminPanel";
+import Unauthorized from "./pages/Unauthorized";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "";
-
-interface HealthResponse {
-  status: string;
-  service: string;
-}
-
-function App() {
-  const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch(`${API_URL}/health`)
-      .then((res) => res.json())
-      .then((data: HealthResponse) => setHealth(data))
-      .catch((err: Error) => setError(err.message));
-  }, []);
-
+export default function App() {
   return (
-    <main style={{ fontFamily: "sans-serif", padding: "2rem" }}>
-      <h1>GSCC — Gestión de Procesos</h1>
-      <p>Worker process manager</p>
-      <hr />
-      <h2>API Status</h2>
-      {error && <p style={{ color: "red" }}>Error: {error}</p>}
-      {health && (
-        <p style={{ color: "green" }}>
-          Backend: <strong>{health.status}</strong>
-        </p>
-      )}
-      {!health && !error && <p>Connecting to backend…</p>}
-    </main>
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/unauthorized" element={<Unauthorized />} />
+
+          {/* All authenticated routes */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/" element={<Dashboard />} />
+
+            {/* Admin-only */}
+            <Route element={<ProtectedRoute requiredRole="admin" />}>
+              <Route path="/admin" element={<AdminPanel />} />
+            </Route>
+          </Route>
+
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
-
-export default App;
