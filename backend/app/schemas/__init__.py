@@ -25,3 +25,21 @@ class UserOut(BaseModel):
     is_active: bool
 
     model_config = {"from_attributes": True}
+
+
+class UserCreate(BaseModel):
+    email: str
+    password: str
+    role: Role = Role.viewer
+    is_active: bool = True
+
+
+class UserUpdate(BaseModel):
+    email: str | None = None
+    role: Role | None = None
+    is_active: bool | None = None
+
+
+class UserPasswordUpdate(BaseModel):
+    current_password: str
+    new_password: str
