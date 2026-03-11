@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.schedules import timedelta
 
 from app.config import settings
 
@@ -15,8 +16,14 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
-    # Keep task results for 24 hours
+    # Task results are transient — Postgres is the authoritative source of truth
     result_expires=86400,
-    # Track task start time
     task_track_started=True,
+    # Beat schedule: check for due recurring schedules every 60 seconds
+    beat_schedule={
+        "dispatch-due-schedules": {
+            "task": "tasks.dispatch_due_schedules",
+            "schedule": timedelta(seconds=60),
+        },
+    },
 )

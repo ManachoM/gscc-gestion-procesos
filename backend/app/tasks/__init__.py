@@ -1,5 +1,6 @@
 from app.celery_app import celery_app
 
+# ── Health-check task ─────────────────────────────────────────────────────────
 
 @celery_app.task(name="tasks.ping", bind=True)
 def ping(self) -> dict:
@@ -7,5 +8,5 @@ def ping(self) -> dict:
     return {"status": "pong", "task_id": self.request.id}
 
 
-# Add domain-specific tasks below, or create separate modules (e.g. tasks/jobs.py)
-# and import them here so Celery's autodiscovery picks them up.
+# ── Workflow execution tasks (imports populate registry as a side-effect) ─────
+from app.tasks import workflow_runner  # noqa: F401, E402

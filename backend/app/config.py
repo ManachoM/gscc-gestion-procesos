@@ -21,5 +21,8 @@ class Settings(BaseSettings):
     celery_broker_url: str = "redis://redis:6379/0"
     celery_result_backend: str = "redis://redis:6379/1"
 
+    # File storage — absolute path inside the container (Docker volume mount)
+    artifacts_path: str = "/data/artifacts"
+
 
 settings = Settings()

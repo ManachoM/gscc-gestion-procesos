@@ -40,7 +40,13 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        # Each migration script runs in its own transaction. Without this,
+        # a single failing migration rolls back every preceding one too.
+        transaction_per_migration=True,
+    )
     with context.begin_transaction():
         context.run_migrations()
 
