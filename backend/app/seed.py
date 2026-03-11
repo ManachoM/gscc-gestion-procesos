@@ -8,6 +8,7 @@ or prompts interactively if those variables are not set.
 """
 import asyncio
 import os
+import sys
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -17,9 +18,16 @@ from app.config import settings
 from app.models import Role, User
 
 
+def _prompt(label: str) -> str:
+    """Read a line from stdin, bypassing surrogate-escape issues in Docker TTYs."""
+    sys.stdout.write(label)
+    sys.stdout.flush()
+    return sys.stdin.buffer.readline().decode("utf-8", errors="ignore").strip()
+
+
 async def seed() -> None:
-    email = os.environ.get("SEED_ADMIN_EMAIL") or input("Admin email: ").strip()
-    password = os.environ.get("SEED_ADMIN_PASSWORD") or input("Admin password: ").strip()
+    email = os.environ.get("SEED_ADMIN_EMAIL") or _prompt("Admin email: ")
+    password = os.environ.get("SEED_ADMIN_PASSWORD") or _prompt("Admin password: ")
 
     engine = create_async_engine(settings.database_url, echo=False)
     Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
