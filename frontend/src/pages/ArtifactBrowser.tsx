@@ -1,31 +1,30 @@
-import { FormEvent, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { Download, Package, Search, X } from "lucide-react";
 import api from "../lib/api";
+import { cn } from "../lib/cn";
 import { formatSize, fmtDate } from "../lib/utils";
 import { apiError, type Artifact } from "../types";
+import { Button } from "../components/ui/Button";
+import { Card } from "../components/ui/Card";
+import { TableSkeleton } from "../components/ui/Skeleton";
+import { PageHeader } from "../components/shared/PageHeader";
+import { EmptyState } from "../components/shared/EmptyState";
+import { PaginationBar } from "../components/shared/PaginationBar";
 
-const inputStyle: React.CSSProperties = {
-  padding: "0.3rem 0.5rem",
-  width: "100%",
-  boxSizing: "border-box",
-  border: "1px solid #ccc",
-  borderRadius: "3px",
-};
-const btnStyle: React.CSSProperties = { padding: "0.35rem 0.75rem", marginRight: "0.4rem", cursor: "pointer" };
-const thStyle: React.CSSProperties = { padding: "0.5rem 0.75rem", background: "#f5f5f5", textAlign: "left", borderBottom: "1px solid #ddd", whiteSpace: "nowrap" };
-const tdStyle: React.CSSProperties = { padding: "0.5rem 0.75rem", borderBottom: "1px solid #eee", verticalAlign: "top" };
 const LIMIT = 50;
 
-function Tag({ label }: { label: string }) {
+function geoLabel(a: Artifact): string {
+  if (a.geo_label) return a.geo_label;
+  return [a.geo_country, a.geo_region, a.geo_city].filter(Boolean).join(" · ") || "—";
+}
+
+function TagPill({ label }: { label: string }) {
   return (
-    <span style={{ background: "#e8f0fe", color: "#1a56cc", padding: "0.1rem 0.4rem", borderRadius: "3px", fontSize: "0.75rem", marginRight: "0.25rem", whiteSpace: "nowrap" }}>
+    <span className="inline-block rounded-full bg-slate-100 text-slate-600 px-2 py-0.5 text-xs whitespace-nowrap">
       {label}
     </span>
   );
-}
-
-function geo(a: Artifact): string {
-  return [a.geo_country, a.geo_region, a.geo_city].filter(Boolean).join(" / ") || "—";
 }
 
 export default function ArtifactBrowser() {
@@ -35,26 +34,45 @@ export default function ArtifactBrowser() {
   const [skip, setSkip] = useState(0);
 
   // Filter state
+  const [q, setQ] = useState("");
   const [workflowSlug, setWorkflowSlug] = useState("");
   const [country, setCountry] = useState("");
-  const [region, setRegion] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [tags, setTags] = useState("");
-  const [q, setQ] = useState("");
 
-  async function fetchArtifacts(currentSkip = skip) {
+  const hasActiveFilter =
+    q.trim() !== "" ||
+    workflowSlug.trim() !== "" ||
+    country.trim() !== "" ||
+    dateFrom !== "" ||
+    dateTo !== "" ||
+    tags.trim() !== "";
+
+  interface Filters {
+    q: string;
+    workflowSlug: string;
+    country: string;
+    dateFrom: string;
+    dateTo: string;
+    tags: string;
+  }
+
+  async function fetchArtifacts(currentSkip: number, filters: Filters) {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
-      if (workflowSlug.trim()) params.set("workflow_slug", workflowSlug.trim());
-      if (country.trim()) params.set("country", country.trim());
-      if (region.trim()) params.set("region", region.trim());
-      if (dateFrom) params.set("date_from", dateFrom);
-      if (dateTo) params.set("date_to", dateTo);
-      tags.split(",").map((t) => t.trim()).filter(Boolean).forEach((t) => params.append("tags", t));
-      if (q.trim()) params.set("q", q.trim());
+      if (filters.q.trim()) params.set("q", filters.q.trim());
+      if (filters.workflowSlug.trim()) params.set("workflow_slug", filters.workflowSlug.trim());
+      if (filters.country.trim()) params.set("country", filters.country.trim());
+      if (filters.dateFrom) params.set("date_from", filters.dateFrom);
+      if (filters.dateTo) params.set("date_to", filters.dateTo);
+      const tagList = filters.tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+      if (tagList.length > 0) params.set("tags", tagList.join(","));
       params.set("skip", String(currentSkip));
       params.set("limit", String(LIMIT));
       const { data } = await api.get<Artifact[]>(`/api/v1/artifacts?${params}`);
@@ -66,144 +84,240 @@ export default function ArtifactBrowser() {
     }
   }
 
+  const currentFilters: Filters = { q, workflowSlug, country, dateFrom, dateTo, tags };
+
   useEffect(() => {
-    fetchArtifacts(skip);
+    fetchArtifacts(skip, currentFilters);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [skip]);
 
-  function handleSearch(e: FormEvent) {
-    e.preventDefault();
-    const newSkip = 0;
-    setSkip(newSkip);
-    fetchArtifacts(newSkip);
+  function handleFilterChange() {
+    setSkip(0);
+    fetchArtifacts(0, currentFilters);
   }
 
   function handleClear() {
-    setWorkflowSlug(""); setCountry(""); setRegion("");
-    setDateFrom(""); setDateTo(""); setTags(""); setQ("");
+    const cleared: Filters = { q: "", workflowSlug: "", country: "", dateFrom: "", dateTo: "", tags: "" };
+    setQ("");
+    setWorkflowSlug("");
+    setCountry("");
+    setDateFrom("");
+    setDateTo("");
+    setTags("");
     setSkip(0);
+    fetchArtifacts(0, cleared);
   }
 
+  const inputCls =
+    "h-9 border border-slate-200 rounded px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-slate-900 placeholder:text-slate-400";
+
   return (
-    <div style={{ padding: "2rem", maxWidth: 1200, margin: "0 auto" }}>
-      <h1 style={{ marginTop: 0 }}>Public Artifacts</h1>
-      <p style={{ color: "#666", marginBottom: "1.5rem" }}>
-        Browse and download publicly available data files produced by extraction workflows.
-      </p>
+    <div className="px-8 py-8 max-w-7xl mx-auto">
+      <PageHeader
+        title="Artifact Catalog"
+        description="Browse and download published geospatial data files"
+      />
 
-      {/* ── Search form ── */}
-      <form
-        onSubmit={handleSearch}
-        style={{ background: "#f9f9f9", border: "1px solid #ddd", borderRadius: "4px", padding: "1rem 1.25rem", marginBottom: "1.5rem" }}
-      >
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "0.75rem", marginBottom: "0.75rem" }}>
-          <label>
-            <span style={{ display: "block", fontSize: "0.8rem", fontWeight: 500, marginBottom: "0.2rem" }}>Workflow</span>
-            <input style={inputStyle} value={workflowSlug} onChange={(e) => setWorkflowSlug(e.target.value)} placeholder="e.g. sample_extraction" />
-          </label>
-          <label>
-            <span style={{ display: "block", fontSize: "0.8rem", fontWeight: 500, marginBottom: "0.2rem" }}>Country</span>
-            <input style={inputStyle} value={country} onChange={(e) => setCountry(e.target.value)} />
-          </label>
-          <label>
-            <span style={{ display: "block", fontSize: "0.8rem", fontWeight: 500, marginBottom: "0.2rem" }}>Region</span>
-            <input style={inputStyle} value={region} onChange={(e) => setRegion(e.target.value)} />
-          </label>
-          <label>
-            <span style={{ display: "block", fontSize: "0.8rem", fontWeight: 500, marginBottom: "0.2rem" }}>Data from</span>
-            <input style={inputStyle} type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-          </label>
-          <label>
-            <span style={{ display: "block", fontSize: "0.8rem", fontWeight: 500, marginBottom: "0.2rem" }}>Data to</span>
-            <input style={inputStyle} type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-          </label>
-          <label>
-            <span style={{ display: "block", fontSize: "0.8rem", fontWeight: 500, marginBottom: "0.2rem" }}>Tags (comma-separated)</span>
-            <input style={inputStyle} value={tags} onChange={(e) => setTags(e.target.value)} placeholder="tag1, tag2" />
-          </label>
-          <label>
-            <span style={{ display: "block", fontSize: "0.8rem", fontWeight: 500, marginBottom: "0.2rem" }}>Search</span>
-            <input style={inputStyle} value={q} onChange={(e) => setQ(e.target.value)} placeholder="filename or description" />
-          </label>
+      {/* Filter bar */}
+      <div className="mt-6 flex flex-wrap gap-3 items-end">
+        {/* Search */}
+        <div className="relative flex-1 min-w-48">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-slate-400 pointer-events-none" />
+          <input
+            className={cn(inputCls, "pl-8 w-full")}
+            placeholder="Search files…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleFilterChange()}
+          />
         </div>
-        <button style={btnStyle} type="submit">Search</button>
-        <button style={btnStyle} type="button" onClick={handleClear}>Clear</button>
-      </form>
 
-      {/* ── Error ── */}
+        {/* Workflow slug */}
+        <input
+          className={inputCls}
+          placeholder="Workflow slug"
+          value={workflowSlug}
+          onChange={(e) => setWorkflowSlug(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleFilterChange()}
+        />
+
+        {/* Country */}
+        <input
+          className={inputCls}
+          placeholder="Country"
+          value={country}
+          onChange={(e) => setCountry(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleFilterChange()}
+        />
+
+        {/* Date from */}
+        <input
+          type="date"
+          className={inputCls}
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+        />
+
+        {/* Date to */}
+        <input
+          type="date"
+          className={inputCls}
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+        />
+
+        {/* Tags */}
+        <input
+          className={inputCls}
+          placeholder="Tags (comma-sep)"
+          value={tags}
+          onChange={(e) => setTags(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleFilterChange()}
+        />
+
+        <Button variant="secondary" size="sm" onClick={handleFilterChange}>
+          Search
+        </Button>
+
+        {hasActiveFilter && (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<X className="size-3.5" />}
+            onClick={handleClear}
+          >
+            Clear
+          </Button>
+        )}
+      </div>
+
+      {/* Error */}
       {error && (
-        <p style={{ color: "red", background: "#fff0f0", padding: "0.5rem 1rem", borderLeft: "4px solid red", marginBottom: "1rem" }}>
-          {error}{" "}
-          <button onClick={() => setError(null)} style={{ cursor: "pointer" }}>✕</button>
+        <div className="mt-4 flex items-center gap-2 rounded border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+          <span className="flex-1">{error}</span>
+          <button
+            onClick={() => setError(null)}
+            className="text-red-400 hover:text-red-600"
+            aria-label="Dismiss"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Results count */}
+      {!loading && !error && (
+        <p className="mt-4 text-sm text-slate-500">
+          Showing {artifacts.length} result{artifacts.length !== 1 ? "s" : ""}
         </p>
       )}
 
-      {/* ── Results ── */}
-      {loading ? (
-        <p style={{ color: "#888" }}>Loading…</p>
-      ) : (
-        <>
-          <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff" }}>
-            <thead>
-              <tr>
-                <th style={thStyle}>File</th>
-                <th style={thStyle}>Workflow</th>
-                <th style={thStyle}>Geography</th>
-                <th style={thStyle}>Data date</th>
-                <th style={thStyle}>Tags</th>
-                <th style={thStyle}>Size</th>
-                <th style={thStyle}>Download</th>
-              </tr>
-            </thead>
-            <tbody>
-              {artifacts.map((a) => (
-                <tr key={a.id}>
-                  <td style={tdStyle}>
-                    <Link to={`/artifacts/${a.id}`} style={{ fontWeight: 500 }}>{a.filename}</Link>
-                    {a.description && (
-                      <div style={{ fontSize: "0.8rem", color: "#888", marginTop: "0.2rem" }}>{a.description}</div>
+      {/* Results table */}
+      <Card className="mt-2 overflow-hidden">
+        {loading ? (
+          <TableSkeleton rows={8} cols={7} />
+        ) : artifacts.length === 0 ? (
+          <EmptyState
+            icon={<Package className="size-6" />}
+            title="No artifacts found"
+            description="Try adjusting your filters to find what you're looking for."
+          />
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead className="bg-slate-50">
+                  <tr>
+                    {["Filename", "Workflow", "Geography", "Data date", "Tags", "Size", "Download"].map(
+                      (col) => (
+                        <th
+                          key={col}
+                          className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider whitespace-nowrap"
+                        >
+                          {col}
+                        </th>
+                      )
                     )}
-                  </td>
-                  <td style={tdStyle}>{a.workflow_slug}</td>
-                  <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>{geo(a)}</td>
-                  <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>{fmtDate(a.data_date)}</td>
-                  <td style={tdStyle}>{a.tags.map((t) => <Tag key={t} label={t} />)}</td>
-                  <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>{a.file_size != null ? formatSize(a.file_size) : "—"}</td>
-                  <td style={tdStyle}>
-                    <a
-                      href={`/api/v1/artifacts/${a.id}/download`}
-                      download={a.filename}
-                      style={{ whiteSpace: "nowrap" }}
-                    >
-                      ↓ Download
-                    </a>
-                  </td>
-                </tr>
-              ))}
-              {artifacts.length === 0 && (
-                <tr>
-                  <td colSpan={7} style={{ textAlign: "center", padding: "2.5rem", color: "#888" }}>
-                    No public artifacts found. Try adjusting your filters.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {artifacts.map((a) => (
+                    <tr key={a.id} className="hover:bg-slate-50">
+                      {/* Filename */}
+                      <td className="px-4 py-3 text-sm">
+                        <Link
+                          to={`/artifacts/${a.id}`}
+                          className="font-medium text-slate-900 font-mono hover:text-primary-600 hover:underline"
+                        >
+                          {a.filename}
+                        </Link>
+                        {a.description && (
+                          <p className="mt-0.5 text-xs text-slate-400 font-sans max-w-xs truncate">
+                            {a.description}
+                          </p>
+                        )}
+                      </td>
 
-          {/* ── Pagination ── */}
-          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginTop: "1rem" }}>
-            <button style={btnStyle} disabled={skip === 0} onClick={() => setSkip((s) => Math.max(0, s - LIMIT))}>
-              ← Prev
-            </button>
-            <span style={{ color: "#888", fontSize: "0.9rem" }}>
-              {skip + 1}–{skip + artifacts.length}
-            </span>
-            <button style={btnStyle} disabled={artifacts.length < LIMIT} onClick={() => setSkip((s) => s + LIMIT)}>
-              Next →
-            </button>
-          </div>
-        </>
-      )}
+                      {/* Workflow */}
+                      <td className="px-4 py-3">
+                        <span className="text-xs text-slate-500 font-mono">{a.workflow_slug}</span>
+                      </td>
+
+                      {/* Geography */}
+                      <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">
+                        {geoLabel(a)}
+                      </td>
+
+                      {/* Data date */}
+                      <td className="px-4 py-3 text-sm text-slate-700 whitespace-nowrap">
+                        {fmtDate(a.data_date)}
+                      </td>
+
+                      {/* Tags */}
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {a.tags.length > 0
+                            ? a.tags.map((t) => <TagPill key={t} label={t} />)
+                            : <span className="text-xs text-slate-400">—</span>}
+                        </div>
+                      </td>
+
+                      {/* Size */}
+                      <td className="px-4 py-3 text-sm text-slate-500 whitespace-nowrap">
+                        {a.file_size != null ? formatSize(a.file_size) : "—"}
+                      </td>
+
+                      {/* Download */}
+                      <td className="px-4 py-3">
+                        <a
+                          href={`/api/v1/artifacts/${a.id}/download`}
+                          download={a.filename}
+                          className={cn(
+                            "inline-flex items-center justify-center gap-1.5 rounded font-medium transition-colors",
+                            "h-8 px-3 text-xs",
+                            "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                          )}
+                        >
+                          <Download className="size-3.5" />
+                          Download
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <PaginationBar
+              skip={skip}
+              limit={LIMIT}
+              count={artifacts.length}
+              onPrev={() => setSkip((s) => Math.max(0, s - LIMIT))}
+              onNext={() => setSkip((s) => s + LIMIT)}
+            />
+          </>
+        )}
+      </Card>
     </div>
   );
 }

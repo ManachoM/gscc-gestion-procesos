@@ -1,14 +1,11 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
-import Layout from "./components/Layout";
+import { ToastProvider } from "./contexts/ToastContext";
+import AppLayout from "./components/layout/AppLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
 
-// Existing pages (keep as-is, they manage their own layout)
 import Login from "./pages/Login";
-import AdminPanel from "./pages/AdminPanel";
 import Unauthorized from "./pages/Unauthorized";
-
-// New pages (wrapped in Layout)
 import Dashboard from "./pages/Dashboard";
 import ArtifactBrowser from "./pages/ArtifactBrowser";
 import ArtifactDetail from "./pages/ArtifactDetail";
@@ -20,31 +17,29 @@ import ScheduleList from "./pages/ScheduleList";
 import ScheduleForm from "./pages/ScheduleForm";
 import AdminWorkflows from "./pages/AdminWorkflows";
 import AdminWorkflowDetail from "./pages/AdminWorkflowDetail";
+import UserManagement from "./pages/UserManagement";
 
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          {/* Standalone pages — manage their own layout/nav */}
-          <Route path="/login" element={<Login />} />
-          <Route path="/unauthorized" element={<Unauthorized />} />
+      <ToastProvider>
+        <BrowserRouter>
+          <Routes>
+            {/* Standalone pages — no layout */}
+            <Route path="/login" element={<Login />} />
+            <Route path="/unauthorized" element={<Unauthorized />} />
 
-          {/* Admin panel (existing, standalone) */}
-          <Route element={<ProtectedRoute requiredRole="admin" />}>
-            <Route path="/admin" element={<AdminPanel />} />
-          </Route>
+            {/* AppLayout wraps all other routes */}
+            <Route element={<AppLayout />}>
+              {/* Public — no auth required */}
+              <Route path="/" element={<ArtifactBrowser />} />
+              <Route path="/artifacts" element={<ArtifactBrowser />} />
+              <Route path="/artifacts/:id" element={<ArtifactDetail />} />
 
-          {/* All other pages use the shared Layout (nav bar + outlet) */}
-          <Route element={<Layout />}>
-            {/* Public — no auth required */}
-            <Route path="/" element={<ArtifactBrowser />} />
-            <Route path="/artifacts" element={<ArtifactBrowser />} />
-            <Route path="/artifacts/:id" element={<ArtifactDetail />} />
-
-            {/* Authenticated */}
-            <Route element={<ProtectedRoute />}>
-              <Route path="/dashboard" element={<Dashboard />} />
+              {/* Any authenticated user */}
+              <Route element={<ProtectedRoute />}>
+                <Route path="/dashboard" element={<Dashboard />} />
+              </Route>
 
               {/* Operator + Admin */}
               <Route element={<ProtectedRoute requiredRole={["admin", "operator"]} />}>
@@ -60,13 +55,15 @@ export default function App() {
               <Route element={<ProtectedRoute requiredRole="admin" />}>
                 <Route path="/admin/workflows" element={<AdminWorkflows />} />
                 <Route path="/admin/workflows/:slug" element={<AdminWorkflowDetail />} />
+                <Route path="/admin/users" element={<UserManagement />} />
+                <Route path="/admin" element={<Navigate to="/admin/users" replace />} />
               </Route>
             </Route>
-          </Route>
 
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </ToastProvider>
     </AuthProvider>
   );
 }

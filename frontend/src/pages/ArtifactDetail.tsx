@@ -1,25 +1,51 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { ChevronLeft, Download, FileX } from "lucide-react";
 import api from "../lib/api";
+import { cn } from "../lib/cn";
 import { formatSize, fmtDate, fmtDateTime } from "../lib/utils";
 import { apiError, type Artifact } from "../types";
+import { Button } from "../components/ui/Button";
+import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/Card";
+import { Skeleton } from "../components/ui/Skeleton";
+import { PageHeader } from "../components/shared/PageHeader";
+import { EmptyState } from "../components/shared/EmptyState";
 
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
+function DetailItem({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <tr>
-      <td style={{ padding: "0.5rem 1rem 0.5rem 0", color: "#666", fontWeight: 500, whiteSpace: "nowrap", verticalAlign: "top" }}>
-        {label}
-      </td>
-      <td style={{ padding: "0.5rem 0", verticalAlign: "top" }}>{value || "—"}</td>
-    </tr>
+    <div>
+      <dt className="text-xs font-medium text-slate-500 uppercase tracking-wide">{label}</dt>
+      <dd className="mt-0.5 text-sm text-slate-900 break-all">{value ?? "—"}</dd>
+    </div>
   );
 }
 
-function Tag({ label }: { label: string }) {
+function TagPill({ label }: { label: string }) {
   return (
-    <span style={{ background: "#e8f0fe", color: "#1a56cc", padding: "0.1rem 0.4rem", borderRadius: "3px", fontSize: "0.8rem", marginRight: "0.25rem" }}>
+    <span className="inline-block rounded-full bg-slate-100 text-slate-600 px-2 py-0.5 text-xs">
       {label}
     </span>
+  );
+}
+
+function DetailSkeleton() {
+  return (
+    <div className="px-6 py-8 max-w-3xl mx-auto space-y-6">
+      <Skeleton className="h-4 w-32" />
+      <div className="space-y-2">
+        <Skeleton className="h-7 w-96" />
+        <Skeleton className="h-4 w-48" />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="rounded-xl border border-slate-200 p-5 space-y-3">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-3/4" />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -38,66 +64,161 @@ export default function ArtifactDetail() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  if (loading) return <div style={{ padding: "2rem" }}>Loading…</div>;
+  if (loading) return <DetailSkeleton />;
 
   if (error || !artifact) {
     return (
-      <div style={{ padding: "2rem" }}>
-        <Link to="/">← Back to artifacts</Link>
-        <p style={{ color: "red", marginTop: "1rem" }}>{error ?? "Artifact not found."}</p>
+      <div className="px-6 py-8 max-w-3xl mx-auto">
+        <Link
+          to="/artifacts"
+          className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-4"
+        >
+          <ChevronLeft className="size-4" />
+          Back to Artifacts
+        </Link>
+        <EmptyState
+          icon={<FileX className="size-6" />}
+          title="Artifact not found"
+          description={error ?? "This artifact does not exist or is not publicly available."}
+          action={
+            <Link to="/artifacts">
+              <Button variant="secondary" size="sm">
+                Back to catalog
+              </Button>
+            </Link>
+          }
+        />
       </div>
     );
   }
 
-  const geoString = [artifact.geo_country, artifact.geo_region, artifact.geo_city, artifact.geo_label]
-    .filter(Boolean)
-    .join(" / ");
-
   return (
-    <div style={{ padding: "2rem", maxWidth: 800, margin: "0 auto" }}>
-      <Link to="/" style={{ color: "#555", fontSize: "0.9rem" }}>← Back to artifacts</Link>
+    <div className="px-6 py-8 max-w-3xl mx-auto">
+      {/* Back link */}
+      <Link
+        to="/artifacts"
+        className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-4"
+      >
+        <ChevronLeft className="size-4" />
+        Back to Artifacts
+      </Link>
 
-      <h1 style={{ marginTop: "1rem", wordBreak: "break-all" }}>{artifact.filename}</h1>
-      {artifact.description && (
-        <p style={{ color: "#555", marginTop: 0 }}>{artifact.description}</p>
-      )}
+      {/* Page header */}
+      <PageHeader
+        title={artifact.filename}
+        description={artifact.description ?? undefined}
+        actions={
+          <a
+            href={`/api/v1/artifacts/${artifact.id}/download`}
+            download={artifact.filename}
+            className={cn(
+              "inline-flex items-center justify-center gap-2 rounded font-medium transition-colors",
+              "h-9 px-4 text-sm",
+              "bg-primary-600 text-white hover:bg-primary-700 shadow-sm"
+            )}
+          >
+            <Download className="size-4" />
+            Download
+          </a>
+        }
+      />
 
-      <div style={{ background: "#fff", border: "1px solid #ddd", borderRadius: "4px", padding: "1rem 1.5rem", marginBottom: "1.5rem" }}>
-        <table style={{ borderCollapse: "collapse", width: "100%" }}>
-          <tbody>
-            <Row label="Workflow" value={artifact.workflow_slug} />
-            <Row label="Geography" value={geoString || null} />
-            <Row label="Data date" value={fmtDate(artifact.data_date)} />
-            <Row label="File type" value={artifact.mime_type} />
-            <Row label="File size" value={artifact.file_size != null ? formatSize(artifact.file_size) : null} />
-            <Row
-              label="Tags"
-              value={
-                artifact.tags.length > 0
-                  ? <>{artifact.tags.map((t) => <Tag key={t} label={t} />)}</>
-                  : null
-              }
-            />
-            <Row label="Created" value={fmtDateTime(artifact.created_at)} />
-          </tbody>
-        </table>
+      {/* Three-column info grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+        {/* File card */}
+        <Card>
+          <CardHeader>
+            <CardTitle>File</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <dl className="grid grid-cols-1 gap-y-3">
+              <DetailItem
+                label="Size"
+                value={artifact.file_size != null ? formatSize(artifact.file_size) : "—"}
+              />
+              <DetailItem
+                label="MIME type"
+                value={
+                  artifact.mime_type ? (
+                    <span className="font-mono text-xs">{artifact.mime_type}</span>
+                  ) : (
+                    "—"
+                  )
+                }
+              />
+            </dl>
+          </CardContent>
+        </Card>
+
+        {/* Provenance card */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Provenance</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <dl className="grid grid-cols-1 gap-y-3">
+              <DetailItem
+                label="Workflow"
+                value={<span className="font-mono text-xs">{artifact.workflow_slug}</span>}
+              />
+              <DetailItem
+                label="Execution"
+                value={
+                  <Link
+                    to={`/executions/${artifact.execution_id}`}
+                    className="font-mono text-xs text-primary-600 hover:underline"
+                  >
+                    #{artifact.execution_id}
+                  </Link>
+                }
+              />
+            </dl>
+          </CardContent>
+        </Card>
+
+        {/* Geography card */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Geography</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <dl className="grid grid-cols-1 gap-y-3">
+              <DetailItem label="Country" value={artifact.geo_country} />
+              <DetailItem label="Region" value={artifact.geo_region} />
+              <DetailItem label="City" value={artifact.geo_city} />
+              <DetailItem label="Label" value={artifact.geo_label} />
+            </dl>
+          </CardContent>
+        </Card>
       </div>
 
-      <a
-        href={`/api/v1/artifacts/${artifact.id}/download`}
-        download={artifact.filename}
-        style={{
-          display: "inline-block",
-          padding: "0.5rem 1.25rem",
-          background: "#1a56cc",
-          color: "#fff",
-          borderRadius: "4px",
-          textDecoration: "none",
-          fontWeight: 600,
-        }}
-      >
-        ↓ Download {artifact.filename}
-      </a>
+      {/* Tags */}
+      {artifact.tags.length > 0 && (
+        <div className="mt-4">
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Tags</p>
+          <div className="flex flex-wrap gap-1.5">
+            {artifact.tags.map((t) => (
+              <TagPill key={t} label={t} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Metadata row */}
+      <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2">
+        <div>
+          <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+            Data date
+          </span>
+          <p className="mt-0.5 text-sm text-slate-900">{fmtDate(artifact.data_date)}</p>
+        </div>
+        <div>
+          <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+            Created at
+          </span>
+          <p className="mt-0.5 text-sm text-slate-900">{fmtDateTime(artifact.created_at)}</p>
+        </div>
+      </div>
     </div>
   );
 }

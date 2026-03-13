@@ -1,137 +1,239 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import {
+  Plus,
+  Calendar,
+  RefreshCw,
+  PauseCircle,
+  PlayCircle,
+  Trash2,
+} from "lucide-react";
 import api from "../lib/api";
+import { useToast } from "../contexts/ToastContext";
+import { type Schedule, apiError } from "../types";
+import { Button } from "../components/ui/Button";
+import { Card } from "../components/ui/Card";
+import { StatusBadge } from "../components/shared/StatusBadge";
+import { PageHeader } from "../components/shared/PageHeader";
+import { EmptyState } from "../components/shared/EmptyState";
+import { TableSkeleton } from "../components/ui/Skeleton";
+import { ConfirmDialog } from "../components/ui/Dialog";
 import { fmtDateTime } from "../lib/utils";
-import { apiError, type Schedule } from "../types";
-import { useAuth } from "../contexts/AuthContext";
+import cronstrue from "cronstrue";
 
-const thStyle: React.CSSProperties = { padding: "0.5rem 0.75rem", background: "#f5f5f5", textAlign: "left", borderBottom: "1px solid #ddd", whiteSpace: "nowrap" };
-const tdStyle: React.CSSProperties = { padding: "0.5rem 0.75rem", borderBottom: "1px solid #eee", verticalAlign: "top" };
-const btnStyle: React.CSSProperties = { padding: "0.25rem 0.6rem", cursor: "pointer", marginRight: "0.3rem", fontSize: "0.85rem" };
-
-function ActiveBadge({ active }: { active: boolean }) {
-  return (
-    <span style={{
-      background: active ? "#e6f4ea" : "#f0f0f0",
-      color: active ? "#1a6e2a" : "#888",
-      padding: "0.15rem 0.5rem",
-      borderRadius: "3px",
-      fontSize: "0.8rem",
-      fontWeight: 600,
-    }}>
-      {active ? "active" : "inactive"}
-    </span>
-  );
+function cronHuman(expr: string): string {
+  try {
+    return cronstrue.toString(expr);
+  } catch {
+    return expr;
+  }
 }
 
 export default function ScheduleList() {
-  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Schedule | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
-  async function fetchSchedules() {
+  useEffect(() => {
+    api
+      .get<Schedule[]>("/api/v1/schedules", { params: { limit: 100 } })
+      .then(({ data }) => setSchedules(data))
+      .catch(() => toast("Failed to load schedules", "error"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleToggle(schedule: Schedule) {
+    setTogglingId(schedule.id);
     try {
-      const { data } = await api.get<Schedule[]>("/api/v1/schedules");
-      setSchedules(data);
+      const { data } = await api.patch<Schedule>(
+        `/api/v1/schedules/${schedule.id}`,
+        { is_active: !schedule.is_active }
+      );
+      setSchedules((prev) => prev.map((s) => (s.id === data.id ? data : s)));
+      toast(data.is_active ? "Schedule resumed" : "Schedule paused", "success");
     } catch (err) {
-      setError(apiError(err, "Failed to load schedules."));
+      toast(apiError(err, "Failed to update schedule"), "error");
     } finally {
-      setLoading(false);
+      setTogglingId(null);
     }
   }
 
-  useEffect(() => { fetchSchedules(); }, []);
-
-  async function handleToggle(s: Schedule) {
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await api.patch(`/api/v1/schedules/${s.id}`, { is_active: !s.is_active });
-      await fetchSchedules();
+      await api.delete(`/api/v1/schedules/${deleteTarget.id}`);
+      setSchedules((prev) => prev.filter((s) => s.id !== deleteTarget.id));
+      toast("Schedule deactivated", "success");
+      setDeleteTarget(null);
     } catch (err) {
-      setError(apiError(err, "Failed to update schedule."));
-    }
-  }
-
-  async function handleDelete(s: Schedule) {
-    if (!window.confirm(`Deactivate schedule "${s.name ?? `#${s.id}`}"?`)) return;
-    try {
-      await api.delete(`/api/v1/schedules/${s.id}`);
-      await fetchSchedules();
-    } catch (err) {
-      setError(apiError(err, "Failed to deactivate schedule."));
+      toast(apiError(err, "Failed to deactivate schedule"), "error");
+    } finally {
+      setDeleting(false);
     }
   }
 
   return (
-    <div style={{ padding: "2rem", maxWidth: 1100, margin: "0 auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-        <h1 style={{ margin: 0 }}>
-          {user?.role === "admin" ? "All Schedules" : "My Schedules"}
-        </h1>
-        <Link
-          to="/schedules/new"
-          style={{ padding: "0.4rem 0.9rem", background: "#1a56cc", color: "#fff", borderRadius: "3px", textDecoration: "none", fontSize: "0.9rem" }}
-        >
-          + New Schedule
-        </Link>
+    <div className="px-8 py-8">
+      <PageHeader
+        title="Schedules"
+        description="Manage scheduled workflow executions"
+        actions={
+          <Button
+            variant="primary"
+            icon={<Plus className="size-3.5" />}
+            onClick={() => navigate("/schedules/new")}
+          >
+            New Schedule
+          </Button>
+        }
+      />
+
+      <div className="mt-6">
+        <Card>
+          {loading ? (
+            <TableSkeleton rows={5} cols={8} />
+          ) : schedules.length === 0 ? (
+            <EmptyState
+              icon={<Calendar className="size-5" />}
+              title="No schedules yet"
+              description="Create your first schedule to automate workflow runs"
+              action={
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={<Plus className="size-3.5" />}
+                  onClick={() => navigate("/schedules/new")}
+                >
+                  New Schedule
+                </Button>
+              }
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-50">
+                  <tr>
+                    {[
+                      "Name",
+                      "Workflow",
+                      "Type",
+                      "Schedule",
+                      "Next run",
+                      "Last run",
+                      "Status",
+                      "Actions",
+                    ].map((h) => (
+                      <th
+                        key={h}
+                        className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500"
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {schedules.map((s) => (
+                    <tr key={s.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 text-sm text-slate-900">
+                        {s.name ?? (
+                          <span className="italic text-slate-400">Unnamed</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-600">
+                        {s.workflow_slug}
+                      </td>
+                      <td className="px-4 py-3">
+                        {s.schedule_type === "once" ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs text-slate-600">
+                            <Calendar className="size-3.5 shrink-0" />
+                            One-time
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 text-xs text-slate-600">
+                            <RefreshCw className="size-3.5 shrink-0" />
+                            Recurring
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-700">
+                        {s.schedule_type === "once" ? (
+                          <span className="text-xs">{fmtDateTime(s.run_at)}</span>
+                        ) : s.cron_expr ? (
+                          <span
+                            className="font-mono text-xs text-slate-600"
+                            title={cronHuman(s.cron_expr)}
+                          >
+                            {s.cron_expr}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-slate-500">
+                        {fmtDateTime(s.next_run_at)}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-slate-500">
+                        {fmtDateTime(s.last_run_at)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusBadge
+                          status={s.is_active ? "active" : "inactive"}
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            loading={togglingId === s.id}
+                            icon={
+                              s.is_active ? (
+                                <PauseCircle className="size-3.5" />
+                              ) : (
+                                <PlayCircle className="size-3.5" />
+                              )
+                            }
+                            onClick={() => handleToggle(s)}
+                          >
+                            {s.is_active ? "Pause" : "Resume"}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-500 hover:text-red-600"
+                            icon={<Trash2 className="size-3.5" />}
+                            onClick={() => setDeleteTarget(s)}
+                          >
+                            Deactivate
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
       </div>
 
-      {error && (
-        <p style={{ color: "red", background: "#fff0f0", padding: "0.5rem 1rem", borderLeft: "4px solid red", marginBottom: "1rem" }}>
-          {error}{" "}
-          <button onClick={() => setError(null)} style={{ cursor: "pointer" }}>✕</button>
-        </p>
-      )}
-
-      {loading ? (
-        <p style={{ color: "#888" }}>Loading…</p>
-      ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff" }}>
-          <thead>
-            <tr>
-              <th style={thStyle}>Name / Workflow</th>
-              <th style={thStyle}>Type</th>
-              <th style={thStyle}>Schedule</th>
-              <th style={thStyle}>Next run</th>
-              <th style={thStyle}>Last run</th>
-              <th style={thStyle}>Status</th>
-              <th style={thStyle}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {schedules.map((s) => (
-              <tr key={s.id}>
-                <td style={tdStyle}>
-                  <div style={{ fontWeight: 500 }}>{s.name ?? <em style={{ color: "#888" }}>unnamed</em>}</div>
-                  <div style={{ color: "#888", fontSize: "0.8rem" }}>{s.workflow_slug}</div>
-                </td>
-                <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>{s.schedule_type}</td>
-                <td style={{ ...tdStyle, fontFamily: "monospace", fontSize: "0.85rem" }}>
-                  {s.schedule_type === "recurring" ? s.cron_expr : fmtDateTime(s.run_at)}
-                </td>
-                <td style={{ ...tdStyle, whiteSpace: "nowrap", fontSize: "0.85rem" }}>{fmtDateTime(s.next_run_at)}</td>
-                <td style={{ ...tdStyle, whiteSpace: "nowrap", fontSize: "0.85rem" }}>{fmtDateTime(s.last_run_at)}</td>
-                <td style={tdStyle}><ActiveBadge active={s.is_active} /></td>
-                <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>
-                  <button style={btnStyle} onClick={() => handleToggle(s)}>
-                    {s.is_active ? "Pause" : "Resume"}
-                  </button>
-                  <button style={{ ...btnStyle, color: "#b91c1c" }} onClick={() => handleDelete(s)}>
-                    Deactivate
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {schedules.length === 0 && (
-              <tr>
-                <td colSpan={7} style={{ textAlign: "center", padding: "2.5rem", color: "#888" }}>
-                  No schedules. <Link to="/schedules/new">Create one →</Link>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      )}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="Deactivate schedule"
+        description="This will stop future runs."
+        confirmLabel="Deactivate"
+        variant="danger"
+        loading={deleting}
+      />
     </div>
   );
 }
